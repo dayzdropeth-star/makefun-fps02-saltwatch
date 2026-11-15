@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SALTWATCH — Tactical FPS</title>
+<style>
+  :root {
+    --lamp: #ffb347; --lamp-dim: #b97f22; --teal: #2fd6c0; --rust: #c2491e;
+    --ink: #eef4f2; --muted: #9db4ae; --sand: #d9c9a8; --panel: rgba(10, 18, 24, 0.85);
+    --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-read: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a1218; color: var(--ink); font-family: var(--font-ui); }
+  #game, #game canvas { position: fixed; inset: 0; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); --gap: 6px; }
+  #crosshair i { position: absolute; background: var(--ink); opacity: .9; }
+  #crosshair i:nth-child(1) { left: 14px; top: calc(15px - var(--gap) - 8px); width: 2px; height: 8px; }
+  #crosshair i:nth-child(2) { left: 14px; top: calc(15px + var(--gap)); width: 2px; height: 8px; }
+  #crosshair i:nth-child(3) { top: 14px; left: calc(15px - var(--gap) - 8px); height: 2px; width: 8px; }
+  #crosshair i:nth-child(4) { top: 14px; left: calc(15px + var(--gap)); height: 2px; width: 8px; }
+  #crosshair b { position: absolute; left: 14px; top: 14px; width: 2px; height: 2px; background: var(--lamp); }
+  #hitmarker { position: fixed; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%) rotate(45deg); opacity: 0; }
+  #hitmarker.on { opacity: 1; } #hitmarker.kill i { background: #ff4d2e; }
+  #hitmarker i { position: absolute; background: var(--sand); }
+  #hitmarker i:nth-child(1) { left: 14px; top: 0; width: 2px; height: 9px; }
+  #hitmarker i:nth-child(2) { left: 14px; bottom: 0; width: 2px; height: 9px; }
+  #hitmarker i:nth-child(3) { top: 14px; left: 0; height: 2px; width: 9px; }
+  #hitmarker i:nth-child(4) { top: 14px; right: 0; height: 2px; width: 9px; }
+  #dmg-vignette { position: fixed; inset: 0; opacity: 0; transition: opacity 120ms; background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 30, 10, 0.55) 100%); }
+  #dmg-vignette.on { opacity: 1; }
+  #dmg-dir { position: fixed; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; opacity: 0; }
+  #dmg-dir.on { opacity: 1; }
+  #dmg-dir::before { content: ''; position: absolute; left: 50%; top: 0; width: 26px; height: 10px; margin-left: -13px; background: #ff4d2e; border-radius: 4px; }
+  #flash-overlay { position: fixed; inset: 0; background: #fff; opacity: 0; }
+  .bl { position: fixed; left: 28px; bottom: 22px; font-family: var(--font-read); }
+  #hud-healthbar-wrap { width: 210px; height: 8px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.25); margin-bottom: 6px; }
+  #hud-healthbar { height: 100%; width: 100%; background: var(--teal); }
+  #hud-healthbar.low { background: #ff4d2e; }
+  #hud-health { font-size: 34px; } #hud-health::after { content: ' HP'; font-size: 13px; color: var(--muted); }
+  .br { position: fixed; right: 28px; bottom: 22px; text-align: right; font-family: var(--font-read); }
+  #ammo-mag { font-size: 52px; line-height: 1; } #ammo-reserve { font-size: 16px; color: var(--muted); }
+  .empty #ammo-mag { color: var(--lamp); }
+  #hud-weapon { font-size: 13px; color: var(--sand); margin-bottom: 2px; }
+  #hud-grenades { font-size: 12px; color: var(--muted); }
+  .tc { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); text-align: center; font-family: var(--font-read); }
+  #hud-timer { font-size: 30px; } #hud-timer.urgent { color: #ff4d2e; }
+  #hud-score { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  #bomb-timer { margin-top: 6px; font-size: 15px; color: var(--lamp); background: var(--panel); padding: 4px 10px; border: 1px solid var(--lamp); display: inline-block; }
+  #bomb-timer.urgent { color: #ff4d2e; border-color: #ff4d2e; }
+  .pips { display: flex; gap: 4px; justify-content: center; margin-top: 6px; }
+  .pip { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,.15); display: inline-block; }
+  .pip.tide.on { background: var(--teal); } .pip.rust.on { background: var(--rust); }
+  #hud-money { position: fixed; top: 18px; right: 28px; font-family: var(--font-read); font-size: 20px; color: var(--sand); }
+  #killfeed { position: fixed; top: 18px; left: 28px; font-size: 13px; font-family: var(--font-read); color: var(--ink); display: grid; gap: 4px; }
+  #killfeed div { background: var(--panel); padding: 3px 8px; border-left: 3px solid var(--lamp); }
+  #hud-hint { position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%); font-size: 14px; color: var(--sand); background: var(--panel); padding: 6px 12px; }
+  /* Stance badge: makes crouch visible on screen — JONGKOK lowers the eye and tightens spread. */
+  #hud-stance { position: fixed; bottom: 132px; left: 50%; transform: translateX(-50%); font-family: var(--font-read); font-size: 12px; letter-spacing: .14em; color: var(--teal); background: var(--panel); padding: 4px 10px; border: 1px solid var(--teal); }
+  #hud-stance[hidden] { display: none; }
+  #plant-ring { position: fixed; left: 50%; top: 58%; transform: translate(-50%, -50%); text-align: center; }
+  #plant-label { font-size: 13px; letter-spacing: .12em; color: var(--lamp); margin-top: 6px; }
+  #round-banner { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); text-align: center; }
+  #banner-title { font-size: 44px; letter-spacing: .06em; margin: 0; text-shadow: 0 2px 12px rgba(0,0,0,.7); }
+  #banner-title.win { color: var(--teal); } #banner-title.lose { color: #ff4d2e; }
+  #banner-sub { font-size: 16px; color: var(--ink); background: var(--panel); display: inline-block; padding: 6px 14px; margin-top: 8px; }
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(6, 12, 16, 0.72); }
+  .overlay[hidden], #buy-menu[hidden], #round-banner[hidden], #plant-ring[hidden], #bomb-timer[hidden] { display: none; }
+  .panel { width: min(480px, 100%); padding: 32px; background: var(--panel); border: 1px solid var(--lamp-dim); border-radius: 6px; }
+  .panel h1 { margin: 0 0 4px; font-size: 40px; letter-spacing: .08em; color: var(--lamp); }
+  .panel h1 span { color: var(--ink); }
+  .panel p { margin: 0 0 20px; font-size: 15px; line-height: 1.55; color: var(--muted); }
+  #play { font: inherit; font-weight: 600; padding: 12px 20px; border: 1px solid var(--lamp); border-radius: 6px; background: var(--lamp); color: #1c1205; cursor: pointer; }
+  #play:hover { background: var(--sand); }
+  .keys { margin: 22px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; font-size: 13px; color: var(--muted); }
+  .keys kbd { padding: 2px 6px; border: 1px solid rgba(255,255,255,.3); border-radius: 4px; font-family: var(--font-read); font-size: 12px; color: var(--ink); }
+  #buy-menu { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); background: var(--panel); border: 1px solid var(--lamp); border-radius: 6px; padding: 20px; pointer-events: auto; }
+  #buy-menu h2 { margin: 0 0 4px; font-size: 20px; color: var(--lamp); }
+  #buy-money { font-family: var(--font-read); color: var(--sand); margin-bottom: 12px; }
+  #buy-list { display: grid; gap: 8px; }
+  .buy-item { display: flex; justify-content: space-between; gap: 12px; align-items: center; font: inherit; text-align: left; padding: 10px 12px; background: rgba(255,255,255,.06); color: var(--ink); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; cursor: pointer; }
+  .buy-item:hover { border-color: var(--lamp); background: rgba(255,179,71,.15); }
+  .buy-item span { color: var(--muted); font-size: 12px; } .buy-item em { font-style: normal; color: var(--sand); font-family: var(--font-read); }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud" aria-hidden="true">
+  <div id="dmg-vignette"></div><div id="dmg-dir"></div><div id="flash-overlay"></div>
+  <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div class="bl">
+    <div id="hud-healthbar-wrap"><div id="hud-healthbar"></div></div>
+    <span id="hud-health">100</span>
+  </div>
+  <div class="br">
+    <div id="hud-weapon">P7 Gull</div>
+    <div><span id="ammo-mag">12</span><span id="ammo-reserve">/ 36</span></div>
+    <div id="hud-grenades">Frag 0 · Flash 0</div>
+  </div>
+  <div class="tc">
+    <div id="hud-timer">1:40</div>
+    <div id="hud-score">TIDE 0 — 0 RUST · Ronde 1</div>
+    <div class="pips"><span id="pips-tide"></span><span id="pips-rust"></span></div>
+    <div id="bomb-timer" hidden></div>
+  </div>
+  <div id="hud-money">$800</div>
+  <div id="killfeed"></div>
+  <div id="hud-hint"></div>
+  <div id="hud-stance" hidden></div>
+  <div id="plant-ring" hidden>
+    <svg width="90" height="90" viewBox="0 0 90 90"><circle cx="45" cy="45" r="38" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="6"/><circle id="plant-fill" cx="45" cy="45" r="38" fill="none" stroke="#ffb347" stroke-width="6" stroke-dasharray="239" stroke-dashoffset="239" transform="rotate(-90 45 45)"/></svg>
+    <div id="plant-label">MEMASANG BOM…</div>
+  </div>
+  <div id="round-banner" hidden><h2 id="banner-title"></h2><div id="banner-sub"></div></div>
+</div>
+<div id="buy-menu" hidden>
+  <h2>BUY MENU — Salt Dock</h2>
+  <div id="buy-money">$800</div>
+  <div id="buy-list"></div>
+  <p style="font-size:12px;color:var(--muted)">Klik atau tekan 1–5. B untuk tutup. Granat: 3 = Frag, 4 = Flash.</p>
+</div>
+<div id="overlay" class="overlay">
+  <section class="panel" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+    <h1 id="overlay-title">SALT<span>WATCH</span></h1>
+    <p id="overlay-copy">Tactical FPS 5v5 di Salt Dock malam hari. Tim Tide menyerang: pasang bom di Crane Yard (A) atau Cold Store (B), atau habisi semua Rust. Pertama sampai 5 ronde menang.</p>
+    <button id="play" type="button">Klik untuk main</button>
+    <ul class="keys">
+      <li><kbd>W A S D</kbd> Gerak</li><li><kbd>Mouse</kbd> Bidik</li>
+      <li><kbd>Klik</kbd> Tembak</li><li><kbd>Klik kanan</kbd> ADS</li>
+      <li><kbd>R</kbd> Reload</li><li><kbd>Shift</kbd> Sprint</li>
+      <li><kbd>Ctrl</kbd> Jongkok</li><li><kbd>Spasi</kbd> Lompat</li>
+      <li><kbd>E</kbd> Pasang bom</li><li><kbd>B</kbd> Menu beli</li>
+      <li><kbd>3 / 4</kbd> Granat</li><li><kbd>M</kbd> Mute · <kbd>Esc</kbd> Jeda</li>
+    </ul>
+  </section>
+</div>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
